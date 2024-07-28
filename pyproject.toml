@@ -1,0 +1,45 @@
+[tool.poetry]
+name = "of-scraper-post-stash"
+version = "0.1.0"
+description = "A python script to run after a download by OF-Scraper"
+authors = ["Jakan"]
+license = "None"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+aiohttp = "^3.9.5"
+stashapp-tools = "^0.2.46"
+PyYAML = "^6.0.1"
+python-dateutil = "^2.9.0.post0"
+numpy = "^2.0.0"
+
+[tool.poetry.group.dev.dependencies]
+black = "^24.4.2"
+isort = "^5.13.2"
+mypy = "^1.10.1"
+pylint = "^3.2.5"
+bandit = "^1.7.9"
+flake8 = "^7.1.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py312']
+
+[tool.flake8]
+max-line-length = 88
+max-complexity = 10
+max-doc-length = 140
+extend-ignore = [
+    "E203",
+    "E501",
+]
+
+[tool.isort]
+profile = "black"
+
+[tool.pylint]
