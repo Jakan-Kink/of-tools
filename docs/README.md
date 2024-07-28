@@ -5,7 +5,7 @@ This repository contains a collection of three projects to import metadata from 
 ## Project 1: FanScrape - forked
 
 > [!NOTE]\
-> This a fork of [FanScrape](https://github.com/toddhow/FanScrape)
+> This a fork of [toddhow/FanScrape](https://github.com/toddhow/FanScrape)
 
 This script is a companion to the OnlyFans/Fansly data scrapers by DIGITALCRIMINAL and derivatives.\
 Above tools download posts from OnlyFans/Fansly and save metadata to 'user_data.db' SQLite files.
