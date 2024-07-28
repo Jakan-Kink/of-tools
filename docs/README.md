@@ -22,13 +22,13 @@ pyofscraperstash is a Python project that is a standalone script to pull in the 
 
 [pyofscraperstash README](https://github.com/Jakan-Kink/of-tools/blob/main/pyofscraperstash/README.md)
 
-## Project 3: post OF-Scraper metadata uploader
+## Project 3: post OF-Scraper metadata uploader [of-scraper-post]
 
-Project 3 is a Python script that takes the arguments from OF-Scraper's `-ds`, `--download-script` arguments, or `advanced_options.post_download_script` config option.
+of-scraper-post is a Python script that takes the arguments from OF-Scraper's `-ds`, `--download-script` arguments, or `advanced_options.post_download_script` config option.
 
-### Project 3 Documentation
+### of-scraper-post Documentation
 
-Not imported yet.
+[of-scraper-post README](https://github.com/Jakan-Kink/of-tools/blob/main/of-scraper-post/README.md)
 
 ## Contributing
 
