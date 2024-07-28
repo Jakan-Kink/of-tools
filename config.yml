@@ -1,0 +1,18 @@
+sanity_check: true
+models:
+of_scraper:
+  # config_file: <path to config file>
+  # config_file: /path/to/config.yml
+  folders:
+    save_location: "/path/to/save/location/"
+    stash_location: "/path/to/save/location/in/stash/"
+    dir_format: "{save_location}/sites/OnlyFans/{model_username}/{response_type}/{value}/{mediatype}"
+    metadata_format: "{save_location}/meta/OnlyFans/{model_username}/Metadata"
+  file_format: "{date}-{filename}.{ext}"
+  date: "YYYY-MM-DD_HH-mm" #for compatibility using the same Arrow based format as OF-Scraper
+stashapp:
+  logger: "log"
+  scheme: "http"
+  host: "localhost"
+  port: 9999
+  api_key: "1234567890"
