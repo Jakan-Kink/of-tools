@@ -1,0 +1,10 @@
+of_scraper:
+  folders:
+    stash_location: "/data/path/to/OnlyFans"
+    dir_format: "{save_location}/sites/OnlyFans/{model_username}"
+stashapp:
+  # logger: log
+  scheme: "https"
+  host: "localhost"
+  port: 9999
+  api_key: ""
