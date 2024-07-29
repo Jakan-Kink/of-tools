@@ -60,7 +60,7 @@ class Default(dict[Any, Any]):
         return "{" + key + "}"
 
 
-async def aiter(iterable: Any) -> t.AsyncIterator[Any]:
+async def aiter_list(iterable: list) -> t.AsyncIterator[list]:
     for i in iterable:
         yield i
 
@@ -404,6 +404,47 @@ async def check_studio_description(
                     temp_studio["details"] = details
                     return client.update_studio(temp_studio)
     return studio
+
+
+async def scan_performer_directory(performer: str, stash: StashInterface) -> None:
+    global runtime_settings
+    performer_path = format_directory(dir_type="dir_format", model_username=performer)
+    file_logger.debug("%s", pformat(f"Performer path: {performer_path}"))
+    scan_flags = {
+        "scanGenerateCovers": True,
+        "scanGeneratePreviews": True,
+        "scanGenerateImagePreviews": True,
+        "scanGenerateSprites": True,
+        "scanGeneratePhashes": True,
+        "scanGenerateThumbnails": True,
+        "scanGenerateClipPreviews": True,
+    }
+    if runtime_settings["after"]:
+        scan_flags["filter"] = {"minModTime": runtime_settings["after"]}
+    file_logger.debug("%s", pformat(f"Scan flags: {scan_flags}"))
+    job = stash.metadata_scan(
+        paths=[performer_path],
+        flags=scan_flags,
+    )
+    running_job = True
+    while running_job:
+        job_status = stash.find_job(job)
+        if job_status["status"] in ["FINISHED", "FAILED", "CANCELLED"]:
+            running_job = False
+        else:
+            try:
+                logger.info(
+                    f"Job status: {job_status['status']} - {job_status['description']} - Sub-Task: {job_status['subTasks']}"
+                )
+            except KeyError:
+                logger.info(
+                    f"Job status: {job_status['status']} - {job_status['description']}"
+                )
+            except TypeError:
+                logger.info(
+                    f"Job status: {job_status['status']} - {job_status['description']}"
+                )
+            time.sleep(0.5)
 
 
 async def get_stash_performers(  # noqa: C901
@@ -912,7 +953,7 @@ async def group_medias_by_post_id(
 ) -> dict[any, list[dict[str, any]]]:
     # Code to group medias by post_id goes here
     grouped_medias: dict[tuple[any, any]] = {}
-    async for media in aiter(medias):
+    async for media in aiter_list(medias):
         try:
             post_id = media["post_id"]
             if post_id not in grouped_medias:
@@ -1551,6 +1592,10 @@ async def main() -> None:
         args.metadata_modification_date or None
     )
     file_logger.debug("%s", pformat(runtime_settings))
+    if runtime_settings["sanity_check"]:
+        logger.info("Sanity check enabled")
+        logger.info(f"Configuration file: {args.config_file}")
+        logger.info(pformat(runtime_settings))
     logger.info("Loading models...")
     metadata_db_sets = await get_metadata_db_files(
         models=runtime_settings.get("models", {}),
@@ -1574,6 +1619,10 @@ async def main() -> None:
         stash_performers = await get_stash_performers(metadata_performers, stash)
         file_logger.debug("%s", pformat(stash_performers))
         if runtime_settings["sanity_check"]:
+            for performer, performer_data in stash_performers.items():
+                logger.info(
+                    f"Performer: {performer} - Alias: {performer_data['alias_list']}"
+                )
             try:
                 input(
                     "If these match up press Enter to continue, or Ctrl-C to quit and fix your StashDB..."
@@ -1585,7 +1634,7 @@ async def main() -> None:
                 exit(1)
         signal.signal(signal.SIGINT, signal_handler)
         stash_studios = {}
-        async for performer in aiter(metadata_performers):
+        async for performer in aiter_list(metadata_performers):
             stash_studios[performer] = await get_stash_studio(performer, stash)
             stash_studios[performer] = await verify_studio_url(
                 stash_studios[performer], performer, stash
@@ -1599,6 +1648,9 @@ async def main() -> None:
                 )
             stash_performers[performer]["studio"] = stash_studios[performer]
         for username, db_file in metadata_db_sets:
+            logger.info(f"Processing performer: {username}")
+            file_logger.info(f"Starting scan of {username}'s OF site directory")
+            await scan_performer_directory(username, stash)
             if args.images_only:
                 await process_image_files(
                     db_file,
