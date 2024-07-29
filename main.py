@@ -165,6 +165,7 @@ def main() -> None:
     file_logger.info(f"Content Length: {len(contents)}")
     start_time = time.time()
     prior_status: str = ""
+    timedout = False
     while running_job:
         job_status = stash.find_job(job)
         if job_status["status"] in ["FINISHED", "FAILED", "CANCELLED"]:
@@ -175,6 +176,11 @@ def main() -> None:
             "STOPPING",
         ]:
             file_logger.info("Timeout: 120 seconds and still waiting to start")
+            stash.call_GQL(
+                query="mutation StopJob($job_id: ID!){stopJob(jobId: $job_id)}",
+                variables={"job_id": job},
+            )
+            timedout = True
             break
         else:
             if prior_status == job_status["status"] and job_status["status"] == "READY":
@@ -260,11 +266,12 @@ def main() -> None:
                                 file_logger.info(pformat(f"Filename: {dash_filename}"))
                 filename = os.path.splitext(filename)[0]
                 file_logger.info(pformat(f"Query File basename: {filename}"))
-                scenes = stash.find_scenes(filter={"per_page": -1}, q=filename)
-                if scenes is not None:
-                    file_logger.info(pformat(f"Scenes: {len(scenes)}"))
-                    for scene in scenes:
-                        asyncio.run(generate_metadata_for_scene(stash, scene["id"]))
+                if timedout is False:
+                    scenes = stash.find_scenes(filter={"per_page": -1}, q=filename)
+                    if scenes is not None:
+                        file_logger.info(pformat(f"Scenes: {len(scenes)}"))
+                        for scene in scenes:
+                            asyncio.run(generate_metadata_for_scene(stash, scene["id"]))
             elif media.get("type", None) == "photo":
                 file_logger.info("Photo")
                 if media.get("canView", False):
