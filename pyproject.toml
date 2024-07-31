@@ -75,5 +75,6 @@ mypy = "^1.10.0"
 pylint = "^3.2.2"
 bandit = "^1.7.8"
 flake8 = "^7.1.0"
+pre-commit = "^3.8.0"
 
 [tool.pylint]
