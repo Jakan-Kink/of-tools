@@ -844,7 +844,7 @@ async def get_medias_from_db(
     base_sql_template = """SELECT {select_columns} from main.medias {join_options} where medias.media_type = '{media_type}' and medias.downloaded == '1' and medias.api_type {api_types} {date_filters}"""
     api_types_mapping = {
         "Posts": ("posts", "IN ('Timeline','Posts','Pinned','Archived')"),
-        "Messages": ("messages", "IN ('Messages','Message')"),
+        "Messages": ("messages", "IN ('Messages','Message','Paid')"),
         "Stories": ("stories", "IN ('Stories','Highlights')"),
         "Others": (
             "others",
