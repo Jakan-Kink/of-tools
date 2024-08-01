@@ -2,6 +2,10 @@
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
+[tool.bandit]
+targets = ["pyofscraperstash/"]
+
+
 [tool.black]
 line-length = 88
 target-version = ['py312']
