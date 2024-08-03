@@ -409,7 +409,7 @@ async def check_studio_description(
 async def scan_performer_directory(performer: str, stash: StashInterface) -> None:
     global runtime_settings
     performer_path = format_directory(
-        dir_type="dir_format", model_username=performer, missing_values=""
+        dir_type="dir_format_stash", model_username=performer, missing_values=""
     )
     performer_path = os.path.normpath(performer_path)
     file_logger.debug("%s", pformat(f"Performer path: {performer_path}"))
