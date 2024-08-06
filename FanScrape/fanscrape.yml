@@ -1,0 +1,17 @@
+name: "FanScrape"
+sceneByFragment:
+  action: script
+  script:
+    - python
+    # use python3 instead if needed
+    - fanscrape.py
+    - queryScene
+galleryByFragment:
+  action: script
+  script:
+    - python
+    # use python3 instead if needed
+    - fanscrape.py
+    - queryGallery
+
+# Last Updated December 29, 2023
