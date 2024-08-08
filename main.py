@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 FORMAT = (
     "%(asctime)s - %(name)s - %(levelname)s - %(funcName)s-%(lineno)d - %(message)s"
 )
-LOG_FILE = "/Users/shawn/Development/of-scraper-post/debug.log"
+LOG_FILE = "/Users/jakan/Development/of-scraper-post/debug.log"
 file_logger = logging.getLogger("file_logger")
 logging.addLevelName(5, "TRACE")
 file_handler = logging.FileHandler(LOG_FILE, mode="a", encoding="utf-8")
@@ -140,7 +140,7 @@ def main() -> None:
     args = sys.argv[1:]
     # for index, arg in enumerate(args):
     #     file_logger.info(pformat(f"Arg-{index} passed: {arg}"))
-    load_config("/Users/shawn/Development/of-scraper-post/config.yml")
+    load_config("/Users/jakan/Development/of-scraper-post/config.yml")
     username = args[0]
     user_id = args[1]
     file_logger.info(f"Username: {username}")
