@@ -24,7 +24,7 @@ repos:
     hooks:
     -   id: pyupgrade
         alias: pyupgrade_fix
-        args: [--py312-plus]
+        args: [--py38-plus]
 -   repo: https://github.com/PyCQA/flake8
     rev: 7.1.0
     hooks:

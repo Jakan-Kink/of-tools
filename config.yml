@@ -1,8 +1,6 @@
 sanity_check: true
 models:
 of_scraper:
-  # config_file: <path to config file>
-  # config_file: /path/to/config.yml
   folders:
     save_location: "/path/to/save/location/"
     stash_location: "/path/to/save/location/in/stash/"

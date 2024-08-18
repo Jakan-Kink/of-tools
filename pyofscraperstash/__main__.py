@@ -9,6 +9,7 @@ import re
 import shutil
 import signal
 import sqlite3
+import sys
 import tempfile
 import time
 import typing as t
@@ -24,6 +25,7 @@ from importlib.metadata import version
 from pprint import PrettyPrinter, pformat
 from string import Formatter
 from typing import Any
+from urllib.parse import urlparse
 
 import aiosqlite
 import dateutil.parser  # type: ignore[unused-ignore]
@@ -42,7 +44,7 @@ logger = logging.getLogger(__name__)
 FORMAT = (
     "%(asctime)s - %(name)s - %(levelname)s - %(funcName)s-%(lineno)d - %(message)s"
 )
-LOG_FILE = "debug.log"
+LOG_FILE = f"debug-{datetime.now().strftime('%Y-%m-%d_%H-%M')}.log"
 file_logger = logging.getLogger("file_logger")
 logging.addLevelName(5, "TRACE")
 file_handler = logging.FileHandler(LOG_FILE, mode="a", encoding="utf-8")
@@ -105,6 +107,7 @@ def deep_get(
 
 def load_config(config_file: str) -> None:
     global runtime_settings
+    file_logger.debug(f"Loading config file: {config_file}")
     _, ext = os.path.splitext(config_file)
     with open(config_file) as file:
         if ext.lower() == ".json":
@@ -166,32 +169,82 @@ def format_directory(dir_type: str | None = None, **vars) -> str:
     return return_string
 
 
+def parse_media_row_to_studio_code(row: dict = {}) -> str:
+    """
+    Parse media row to get the link or filename
+    and return the studio code.
+    """
+    file_logger.debug("%s", pformat(f"Row: {row}"))
+    if not isinstance(row, dict):
+        file_logger.error(f"row must be a dictionary:\n{pformat(row)}")
+        raise ValueError("row must be a dictionary")
+    if row == {}:
+        file_logger.error(f"row cannot be empty: {row}")
+        raise ValueError("row cannot be empty")
+    if row["link"]:
+        url = row["link"]
+        converted_url = urlparse(url)
+        converted_path = converted_url.path
+        converted_array = converted_path.split("/")
+        converted_filename = converted_array[-1]
+        filename = converted_filename.split("?")[0]
+        file_no_ext = os.path.splitext(filename)[0]
+        if sys.version_info >= (3, 9):
+            file_no_ext = file_no_ext.removesuffix("_source")
+        else:
+            file_no_ext = (
+                file_no_ext[:-7] if file_no_ext.endswith("_source") else file_no_ext
+            )
+        file_logger.debug("%s", pformat(f"Filename: {file_no_ext}"))
+        return file_no_ext
+    else:
+        pending_filename = os.path.splitext(row["filename"])[0]
+        if "source" in pending_filename:
+            full_filename = pending_filename.split("_")[-2].split("-")[-1]
+        else:
+            full_filename = pending_filename.split("_")[-1].split("-")[-1]
+        if len(full_filename) < 5:
+            full_filename = os.path.splitext(row["filename"])[0]
+            file_logger.warning(
+                pformat(f"Short path: {row['filename']} - trying full {full_filename}"),
+            )
+        return full_filename
+
+
 async def load_db_into_memory(db_file: str) -> aiosqlite.Connection:
     # Create a temporary directory to store the local copy of the database
-    with tempfile.TemporaryDirectory() as temp_dir:
-        local_db_path = os.path.join(temp_dir, os.path.basename(db_file))
-        # Copy the database file from the network drive to the local path
-        shutil.copy(db_file, local_db_path)
+    file_logger.debug(f"Loading {db_file} into memory")
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            local_db_path = os.path.join(temp_dir, os.path.basename(db_file))
+            # Copy the database file from the network drive to the local path
+            shutil.copy(db_file, local_db_path)
 
-        # Connect to the local copy of the database file
-        async with aiosqlite.connect(
-            local_db_path, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES
-        ) as disk_conn:
-            # Dump the database into SQL commands
-            dump_commands = "".join(
-                [f"{line}\n" async for line in disk_conn.iterdump()]
-            )
-            # Connect to an in-memory database
-            mem_conn = await aiosqlite.connect(
-                ":memory:",
+            # Connect to the local copy of the database file
+            async with aiosqlite.connect(
+                local_db_path,
                 detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
-            )
-            # Execute the dump commands to recreate the database in memory
-            await mem_conn.executescript(dump_commands)
-            return mem_conn  # Return the in-memory connection
+            ) as disk_conn:
+                # Dump the database into SQL commands
+                dump_commands = "".join(
+                    [f"{line}\n" async for line in disk_conn.iterdump()]
+                )
+                # Connect to an in-memory database
+                mem_conn = await aiosqlite.connect(
+                    ":memory:",
+                    detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
+                )
+                # Execute the dump commands to recreate the database in memory
+                await mem_conn.executescript(dump_commands)
+                return mem_conn  # Return the in-memory connection
+    except sqlite3.Error as e:
+        file_logger.warning(f"SQL Error: {db_file}")
+        file_logger.exception(e, exc_info=False, stack_info=False)
+        Raise(Exception(f"SQL Error: {db_file}"))
 
 
 async def get_usernames_from_db(conn: aiosqlite.Connection, db_file: str) -> str:
+    file_logger.debug(f"Getting username from {db_file}")
     try:
         async with conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='labels';"
@@ -273,8 +326,21 @@ async def get_metadata_db_files(
     aiosqlite.register_converter("created_at", convert_datetime)
     return_list = []
     logger.info(f"Loading {len(db_set)} databases into memory")
+    file_logger.debug("%s", pformat(f"DB Set: {db_set}"))
     for db_file in db_set:
-        conn = await load_db_into_memory(db_file)
+        try:
+            conn = await load_db_into_memory(db_file)
+        except sqlite3.Error as e:
+            file_logger.warning(f"SQL Error: {db_file}")
+            file_logger.exception(e, exc_info=False, stack_info=False)
+            continue
+        except Exception as e:
+            file_logger.error(f"Error: {e}")
+            continue
+        if conn is None:
+            file_logger.error(f"Connection is None for {db_file}")
+            logger.error(f"Connection is None for {db_file}")
+            continue
         conn.row_factory = aiosqlite.Row
         username = await get_usernames_from_db(conn, db_file)
         return_list.append((username, conn))
@@ -425,6 +491,12 @@ async def scan_performer_directory(performer: str, stash: StashInterface) -> Non
     if runtime_settings["after"]:
         scan_flags["filter"] = {"minModTime": runtime_settings["after"]}
     file_logger.debug("%s", pformat(f"Scan flags: {scan_flags}"))
+    prior_status: str = ""
+    running_jobs: list[int] = []
+    running_jobs = stash.job_queue() or []
+    if len(running_jobs) > 0:
+        logger.info(f"There are currently {len(running_jobs)} jobs in the queue.")
+        file_logger.debug("%s", pformat(f"Running jobs: {running_jobs}"))
     job = stash.metadata_scan(
         paths=[performer_path],
         flags=scan_flags,
@@ -435,6 +507,10 @@ async def scan_performer_directory(performer: str, stash: StashInterface) -> Non
         if job_status["status"] in ["FINISHED", "FAILED", "CANCELLED"]:
             running_job = False
         else:
+            if prior_status == job_status["status"] and job_status["status"] == "READY":
+                prior_status = job_status["status"]
+                time.sleep(0.5)
+                continue
             try:
                 logger.info(
                     f"Job status: {job_status['status']} - {job_status['description']} - Sub-Task: {job_status['subTasks']}"
@@ -448,6 +524,7 @@ async def scan_performer_directory(performer: str, stash: StashInterface) -> Non
                     f"Job status: {job_status['status']} - {job_status['description']}"
                 )
             time.sleep(0.5)
+            prior_status = job_status["status"]
 
 
 async def get_stash_performers(  # noqa: C901
@@ -750,16 +827,15 @@ def process_db_row_scene_files(
     paths = []
     for row in rows:
         path = ""
-        if "source" in row["filename"]:
-            path = (os.path.splitext(row["filename"])[0]).split("_")[-2].split("-")[-1]
-        else:
-            path = (os.path.splitext(row["filename"])[0]).split("_")[-1].split("-")[-1]
-        if len(path) < 5:
-            full_filename = os.path.splitext(row["filename"])[0]
-            file_logger.debug(
-                "%s", pformat(f"Short path: {path} - trying full {full_filename}")
-            )
-            path = full_filename
+        try:
+            path = parse_media_row_to_studio_code(row)
+            row["studio_code"] = path
+        except ValueError as e:
+            file_logger.warning(f"Error: {e}")
+            continue
+        except Exception as e:
+            file_logger.error(f"Error: {e}")
+            continue
         paths.append(path)
     or_conditions = [
         {"path": {"modifier": "INCLUDES", "value": path}} for path in paths
@@ -812,19 +888,20 @@ def process_db_row_scene_files(
         return []
     if stash_scenes[0] > len(paths):
         rows = []
+        file_logger.error(f"More scenes found than paths:\n{pformat(stash_scenes[1])}")
         Raise(ValueError(f"More scenes found than paths: {pformat(stash_scenes[1])}"))
     for row in rows:
         file_id = None
         if row["text"]:
             row["text"] = unescape(row["text"]).replace("<br /> ", "\n")
             row["text"] = re.sub(r"<[^>]*>", "", row["text"])
-        file_id = os.path.splitext(row["filename"])[0]
+        file_id = row["studio_code"]
         if file_id is None:
             continue
         row["scene"] = []
         for scene in stash_scenes[1]:
             for file in scene["files"]:
-                if file_id in file["path"]:  # and scene["organized"] is False
+                if file_id in file["path"] and scene["organized"] is False:
                     row["scene"].append(scene)
     file_logger.log(5, "%s", pformat(f"Rows to be returned: {rows}"))
     file_logger.log(
@@ -912,7 +989,7 @@ async def get_medias_from_db(
         total=total_pages, desc=f"{username} {api_type} - Adding Tasks", position=1
     )
     base_sql_command = base_sql_template.format(
-        select_columns="medias.filename, medias.downloaded, medias.post_id, medias.media_id, medias.api_type, {table}.text, {table}.created_at",
+        select_columns="medias.filename, medias.downloaded, medias.post_id, medias.media_id, medias.api_type, {table}.text, {table}.created_at, medias.link",
         join_options="LEFT JOIN {table} ON medias.post_id = {table}.post_id",
         media_type=media_type,
         api_types=api_types,
@@ -1294,9 +1371,9 @@ async def update_scene(
                     # scene_id = scene["id"]
                     if media["text"]:
                         title_holder = (
-                            (media["text"].splitlines())[0][:64]
+                            (media["text"].splitlines())[0][:128]
                             if len(media["text"].splitlines()) > 1
-                            else media["text"][:64]
+                            else media["text"][:128]
                         )
                         if scene["title"] != title_holder:
                             differences["title"] = title_holder
@@ -1329,8 +1406,8 @@ async def update_scene(
                             differences["studio_id"] = performer_studio["id"]
                     else:
                         differences["studio_id"] = performer_studio["id"]
-                    if scene["code"] != f"{post_id}":
-                        differences["code"] = f"{post_id}"
+                    if scene["code"] != media["studio_code"]:
+                        differences["code"] = media["studio_code"]
                     if scene["urls"] != [f"https://onlyfans.com/{post_id}/{username}"]:
                         differences["urls"] = [
                             f"https://onlyfans.com/{post_id}/{username}"
