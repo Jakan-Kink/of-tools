@@ -5,3 +5,4 @@ max-doc-length = 140
 extend-ignore =
     E203,
     E501,
+    W503,
