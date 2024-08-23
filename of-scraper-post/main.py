@@ -184,24 +184,9 @@ async def generate_metadata(stash: StashInterface) -> None:
     )
 
 
-def process_post_user() -> None:
+def scan_user(stash: StashInterface, username: str) -> None:
     global runtime_settings
     global args
-    with open(args[2]) as file:
-        provided_data = json.load(file)
-    args_logger.info(pformat(f"Provided Data: \n{pformat(provided_data)}"))
-    username = provided_data["username"]
-    user_id = provided_data["model_id"]
-    file_logger.info(f"Username: {username}")
-    file_logger.info(f"User ID: {user_id}")
-    stash = StashInterface(
-        {
-            "scheme": runtime_settings["stashapp"]["scheme"],
-            "host": runtime_settings["stashapp"]["host"],
-            "port": runtime_settings["stashapp"]["port"],
-            "ApiKey": runtime_settings["stashapp"]["api_key"],
-        }
-    )
     path = [format_directory("dir_format_stash", model_username=username)]
     file_logger.info(f"path: {pformat(path)}")
     job = stash.metadata_scan(paths=path)
@@ -231,19 +216,67 @@ def process_post_user() -> None:
                 )
             prior_status = job_status["status"]
             time.sleep(0.5)
+
+
+def check_postMedia_in_media(post_media: dict, media: list[dict]) -> bool:
+    for m in media:
+        if m.get("id", None) is None:
+            continue
+        if m["id"] == post_media["id"]:
+            return True
+    return False
+
+
+def process_media_and_posts(
+    stash: StashInterface, media: list[dict], posts: list[dict]
+) -> None:
+    global runtime_settings
+    global args
+    filtered_posts = []
+    for post in posts:
+        if post.get("mediaCount", 0) == 0:
+            continue
+        if post.get("media", None) is None:
+            continue
+        for post_media in post["media"]:
+            if check_postMedia_in_media(post_media, media):
+                if post not in filtered_posts:
+                    filtered_posts.append(post)
+                break
+    for post in filtered_posts:
+        args_logger.info(pformat(f"Post: {post}"))
+        file_logger.info(pformat(f"Post: {post}"))
+        if post.get("responseType", None) == "profile":
+            file_logger.info("Profile")
+            continue
+
+
+def process_post_user() -> None:
+    global runtime_settings
+    global args
+    with open(args[2]) as file:
+        provided_data = json.load(file)
+    args_logger.info(pformat(f"Provided Data: \n{pformat(provided_data)}"))
+    username = provided_data["username"]
+    user_id = provided_data["model_id"]
+    file_logger.info(f"Username: {username}")
+    file_logger.info(f"User ID: {user_id}")
+    stash = StashInterface(
+        {
+            "scheme": runtime_settings["stashapp"]["scheme"],
+            "host": runtime_settings["stashapp"]["host"],
+            "port": runtime_settings["stashapp"]["port"],
+            "ApiKey": runtime_settings["stashapp"]["api_key"],
+        }
+    )
+    scan_user(stash, username)
     file_logger.info("Beginning of media looping")
     media = provided_data.get("media", [])
     posts = provided_data.get("posts", [])
-    contents = media + posts
     if len(media) > 0:
         file_logger.info(f"Media Count: {len(media)}")
-    for m in media:
-        file_logger.info(f"Media: {pformat(m)}")
-        if m.get("type", None) == "video":
-            filename: str = ""
-            file_logger.info("Video")
-        elif m.get("type", None) == "photo":
-            file_logger.info("Photo")
+        process_media_and_posts(stash, media, posts)
+    contents = media + posts
     for content in contents:
         if (
             content.get("responseType", None) == "profile"
@@ -313,11 +346,21 @@ def process_post_user() -> None:
                                 file_logger.info(pformat(f"Filename: {dash_filename}"))
                 filename = os.path.splitext(filename)[0]
                 file_logger.info(pformat(f"Query File basename: {filename}"))
+                if filename == "":
+                    continue
                 scenes = stash.find_scenes(filter={"per_page": -1}, q=filename)
-                if scenes is not None:
-                    file_logger.info(pformat(f"Scenes: {len(scenes)}"))
-                    for scene in scenes:
-                        asyncio.run(generate_metadata_for_scene(stash, scene["id"]))
+                if scenes is None:
+                    file_logger.info("No scenes found")
+                    continue
+                if len(scenes) == 0:
+                    file_logger.info("No scenes found")
+                    continue
+                if len(scenes) > 5:
+                    file_logger.info("Too many scenes found")
+                    continue
+                file_logger.info(pformat(f"Scenes: {len(scenes)}"))
+                for scene in scenes:
+                    asyncio.run(generate_metadata_for_scene(stash, scene["id"]))
             elif media.get("type", None) == "photo":
                 file_logger.info("Photo")
                 if media.get("canView", False):
@@ -364,44 +407,13 @@ def process_post_loop() -> None:
         user_id: int = user.get("id", 0)
         file_logger.info(f"Username: {username}")
         file_logger.info(f"User ID: {user_id}")
-        path = [format_directory("dir_format_stash", model_username=username)]
-        file_logger.info(f"path: {path}")
-        job = stash.metadata_scan(paths=path)
-        running_job = True
-        prior_status: str = ""
-        while running_job:
-            job_status = stash.find_job(job)
-            if job_status["status"] in ["FINISHED", "FAILED", "CANCELLED"]:
-                running_job = False
-            else:
-                if (
-                    prior_status == job_status["status"]
-                    and job_status["status"] == "READY"
-                ):
-                    prior_status = job_status["status"]
-                    time.sleep(0.5)
-                    continue
-                try:
-                    file_logger.info(
-                        f"Job status: {job_status['status']} - {job_status['description']} - Sub-Task: {job_status['subTasks']}"
-                    )
-                except KeyError:
-                    file_logger.info(
-                        f"Job status: {job_status['status']} - {job_status['description']}"
-                    )
-                except TypeError:
-                    file_logger.info(
-                        f"Job status: {job_status['status']} - {job_status['description']}"
-                    )
-                prior_status = job_status["status"]
-                time.sleep(0.5)
+        scan_user(stash, username)
         file_logger.info(f"End of user {username}")
         file_logger.info(
             f"Expiration: {user.get('subscribedByData', {}).get('expiredAt', 'N/A')}"
         )
     file_logger.info("End of users scan")
     file_logger.info("Starting generation of metadata")
-    asyncio.run(generate_metadata(stash))
 
 
 def main() -> None:
