@@ -44,7 +44,7 @@ repos:
   hooks:
     - id: pylint
       name: pylint
-      entry: pylint
+      entry: ../../.virtualenvs/stash/bin/pylint
       language: system
       types: [python]
       args:

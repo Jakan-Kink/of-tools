@@ -22,6 +22,7 @@ from functools import reduce
 from glob import glob
 from html import unescape
 from importlib.metadata import version
+from io import StringIO
 from pprint import PrettyPrinter, pformat
 from string import Formatter
 from typing import Any
@@ -30,6 +31,7 @@ from urllib.parse import urlparse
 import aiosqlite
 import dateutil.parser  # type: ignore[unused-ignore]
 import yaml  # type: ignore[unused-ignore]
+from markdown import Markdown
 from numpy.random import default_rng
 from stashapi.stash_types import OnMultipleMatch
 
@@ -75,6 +77,23 @@ def signal_handler(sig, frame):
 pprint = PrettyPrinter(
     indent=4, depth=2, compact=True, width=(os.get_terminal_size().columns - 5)
 ).pprint
+
+
+def unmark_element(element, stream=None):
+    if stream is None:
+        stream = StringIO()
+    if element.text:
+        stream.write(element.text)
+    for sub in element:
+        unmark_element(sub, stream)
+    if element.tail:
+        stream.write(element.tail)
+    return stream.getvalue()
+
+
+Markdown.output_formats["plain"] = unmark_element
+__md = Markdown(output_format="plain")
+__md.stripTopLevelTags = False
 
 
 def update_progress_bar(future: asyncio.Future, bar: progressbar) -> None:
@@ -803,6 +822,89 @@ def process_db_row_image_files(
     return rows
 
 
+def searchPerformers(scene):
+    pattern = re.compile(r"(?:^|\s)@([\w\-\.]+)")
+    content = unescape(scene["details"])
+    # if title is truncated, remove trailing dots and skip searching title
+    if scene["title"].endswith("..") and scene["title"].removesuffix("..") in content:
+        searchtext = content
+    else:
+        # if title is unique, search title and content
+        searchtext = scene["title"] + " " + content
+    usernames = re.findall(pattern, unescape(searchtext))
+    return usernames
+
+
+def sanitize_string(string):
+    """
+    Parses and sanitizes strings to remove HTML tags
+    """
+    if string:
+        string = unescape(string).replace("<br /> ", "\n")
+        string = re.sub(r"<[^>]*>", "", string)
+        return string
+    return string
+
+
+def truncate_title(title, max_length):
+    """
+    Truncate title to provided maximum length while preserving word boundaries.
+    """
+    # Check if the title is already within the desired length
+    if len(title) <= max_length:
+        return title
+
+    # Find the last space character before the max length
+    last_space_index = title.rfind(" ", 0, max_length)
+    # If there's no space before the max length, simply truncate the string
+    if last_space_index == -1:
+        return title[:max_length]
+    # Otherwise, truncate at the last space character
+    return title[:last_space_index]
+
+
+def remove_markdown_in_title(title):
+    """
+    Remove markdown characters in the title.
+    """
+    return __md.convert(title)
+
+
+def format_title(title, username, date, scene_index, scene_count):
+    """
+    Format a post title based on various conditions.
+    """
+    if len(title) == 0:
+        scene_info = f" ({scene_index})" if scene_index > 0 else ""
+        return f"{username} - {date}{scene_info}"
+
+    title = sanitize_string(title)
+
+    title = remove_markdown_in_title(title)
+
+    f_title = truncate_title(
+        title.split("\n")[0].strip(), runtime_settings["max_title_length"]
+    )
+    scene_info = f" ({scene_index})" if scene_index > 0 else ""
+
+    if len(f_title) <= 5:
+        return f"{f_title} - {date}{scene_info}"
+
+    if not bool(re.search("[A-Za-z0-9]", f_title)):
+        if scene_index == 0:
+            title_max_len = runtime_settings["max_title_length"] - 13
+        else:
+            title_max_len = (
+                runtime_settings["max_title_length"] - 16 - len(str(scene_index))
+            )
+        t_title = truncate_title(f_title, title_max_len)
+        scene_info = f" ({scene_index})" if scene_index > 0 else ""
+        return f"{t_title} - {date}{scene_info}"
+
+    scene_info = f" {scene_index}/{scene_count}" if scene_index > 0 else ""
+    return f"{f_title}{scene_info}"
+
+
 def process_db_row_scene_files(
     rows: list[dict[str, any]], performer: str = None, sleep: bool = True
 ) -> dict:
@@ -989,7 +1091,7 @@ async def get_medias_from_db(
         total=total_pages, desc=f"{username} {api_type} - Adding Tasks", position=1
     )
     base_sql_command = base_sql_template.format(
-        select_columns="medias.filename, medias.downloaded, medias.post_id, medias.media_id, medias.api_type, {table}.text, {table}.created_at, medias.link",
+        select_columns="medias.filename, medias.downloaded, medias.post_id, medias.media_id, medias.api_type, {table}.text, {table}.created_at, medias.link, medias.linked",
         join_options="LEFT JOIN {table} ON medias.post_id = {table}.post_id",
         media_type=media_type,
         api_types=api_types,
@@ -1370,18 +1472,13 @@ async def update_scene(
                     differences = {"id": scene["id"]}
                     # scene_id = scene["id"]
                     if media["text"]:
-                        title_holder = (
-                            (media["text"].splitlines())[0][:128]
-                            if len(media["text"].splitlines()) > 1
-                            else media["text"][:128]
+                        title_holder = format_title(
+                            scene["title"],
+                            username,
+                            media["created_at"].strftime("%Y-%m-%d"),
+                            media_list.index(media),
+                            len(media_list),
                         )
-                        if scene["title"] != title_holder:
-                            differences["title"] = title_holder
-                    else:
-                        if media_list[0]["created_at"] is not None:
-                            title_holder = f"{username} - {media_list[0]["created_at"].strftime("%Y-%m-%d")}"
-                        else:
-                            title_holder = f"{username} - {post_id}"
                         if scene["title"] != title_holder:
                             differences["title"] = title_holder
                     if media_list[0]["text"]:
@@ -1783,16 +1880,16 @@ async def main() -> None:
             }
         )
         logger.info(f"Metadata generation job: {gen_job}")
-        running = True
-        while running:
-            job_status = stash.find_job(gen_job)
-            logger.info(f"Metadata generation status: {job_status}")
-            file_logger.info(f"Metadata generation status: {job_status}")
-            if job_status["status"] in ["FINISHED", "FAILED", "CANCELLED"]:
-                running = False
-                break
-            else:
-                await asyncio.sleep(5)
+        # running = True
+        # while running:
+        #     job_status = stash.find_job(gen_job)
+        #     logger.info(f"Metadata generation status: {job_status}")
+        #     file_logger.info(f"Metadata generation status: {job_status}")
+        #     if job_status["status"] in ["FINISHED", "FAILED", "CANCELLED"]:
+        #         running = False
+        #         break
+        #     else:
+        #         await asyncio.sleep(5)
     except Exception as e:
         logger.exception(e, exc_info=True, stack_info=True)
         return
