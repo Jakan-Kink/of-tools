@@ -403,17 +403,20 @@ def process_post_loop() -> None:
     )
     for user in provided_data["users"]:
         file_logger.info("Beginning of user scan")
-        username: str = user.get("username", "Missing")
-        user_id: int = user.get("id", 0)
-        file_logger.info(f"Username: {username}")
-        file_logger.info(f"User ID: {user_id}")
+        file_logger.info(pformat(f"User: {user}"))
+        userdata = provided_data["users"].get(user, {})
+        username: str = userdata.get("username", "Missing")
+        user_id: int = user
+        print(f"Username: {username}")
+        print(f"User ID: {user_id}")
         scan_user(stash, username)
-        file_logger.info(f"End of user {username}")
-        file_logger.info(
-            f"Expiration: {user.get('subscribedByData', {}).get('expiredAt', 'N/A')}"
+        print(f"End of user {username}")
+        print(
+            f"Expiration: {userdata.get('subscribedByData', {}).get('expiredAt', 'N/A')}"
         )
     file_logger.info("End of users scan")
     file_logger.info("Starting generation of metadata")
+    asyncio.run(generate_metadata(stash))
 
 
 def main() -> None:
