@@ -23,7 +23,7 @@ extend-ignore = [
 profile = "black"
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "^3.12"
 strict = true
 # Start off with these
 warn_unused_configs = true
@@ -63,20 +63,20 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.12"
-aiohttp = "^3.9.5"
+aiohttp = "^3.10.5"
 aiomultiprocess = "^0.9.1"
 aiosqlite = "^0.20.0"
-stashapp-tools = "^0.2.43"
-pyyaml = "^6.0.1"
-tqdm = "^4.66.4"
+stashapp-tools = "^0.2.53"
+pyyaml = "^6.0.2"
+tqdm = "^4.66.5"
 python-dateutil = "^2.9.0.post0"
-numpy = "^2.0.0"
+numpy = "^2.1.0"
 
 [tool.poetry.group.dev.dependencies]
-black = "^24.4.2"
+black = "^24.8.0"
 isort = "^5.13.2"
-mypy = "^1.10.0"
-pylint = "^3.2.2"
+mypy = "^1.11.0"
+pylint = "^3.2.7"
 bandit = "^1.7.8"
 flake8 = "^7.1.0"
 pre-commit = "^3.8.0"
